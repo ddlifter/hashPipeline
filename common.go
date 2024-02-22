@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-//type job func(in, out chan interface{})
+type job func(in, out chan interface{})
 
 const (
 	MaxInputDataLen = 100

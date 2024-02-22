@@ -2,14 +2,15 @@ package main
 
 import (
 	"fmt"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 )
 
-type job func(in, out chan interface{})
-
 func ExecutePipeline(jobs ...job) {
 	in := make(chan interface{})
-	out := make(chan interface{}, 2)
+	out := make(chan interface{})
 
 	wg := &sync.WaitGroup{}
 
@@ -18,51 +19,46 @@ func ExecutePipeline(jobs ...job) {
 		go func(jobFunc job, in, out chan interface{}) {
 			defer wg.Done()
 			jobFunc(in, out)
+			close(out)
 		}(jobFunc, in, out)
 		in = out
-		out = make(chan interface{}, 2)
+		out = make(chan interface{})
 	}
 	wg.Wait()
-	close(out)
 }
 
 func SingleHash(in, out chan interface{}) {
-	go func() {
-		for n := range in {
-			out <- n.(int) * n.(int)
-		}
-	}()
+	for n := range in {
+		data := n.(int)
+		dataStr := strconv.Itoa(data)
+		crc32hash := DataSignerCrc32(dataStr)
+
+		md5hash := DataSignerCrc32(DataSignerMd5(dataStr))
+		res := fmt.Sprintf("%s~%s", crc32hash, md5hash)
+		out <- res
+	}
 }
 
 func MultiHash(in, out chan interface{}) {
-	go func() {
-		for n := range in {
-			fmt.Println(n)
-			out <- n.(int) + 1
+	for n := range in {
+		result := ""
+		for th := 0; th < 6; th++ {
+			i := strconv.Itoa(th)
+			crc32val := DataSignerCrc32(fmt.Sprintf("%s%s", i, n.(string)))
+			result += crc32val
+			fmt.Println(crc32val)
 		}
-	}()
+		fmt.Println(result)
+		out <- result
+	}
 }
 
 func CombineResults(in, out chan interface{}) {
-	go func() {
-		for n := range in {
-			fmt.Println(n)
-			out <- n.(int) + 1
-		}
-	}()
-}
-
-func main() {
-	inputData := []int{0, 1, 1, 2, 3, 5, 8}
-	hashSignJobs := []job{
-		job(func(in, out chan interface{}) {
-			for _, fibNum := range inputData {
-				out <- fibNum
-			}
-		}),
-		job(SingleHash),
-		job(MultiHash),
-		job(CombineResults),
+	res := make([]string, len(in))
+	for n := range in {
+		res = append(res, n.(string))
 	}
-	ExecutePipeline(hashSignJobs...)
+	sort.Strings(res)
+	resultStr := strings.Join(res, "_")
+	out <- resultStr
 }
