@@ -28,28 +28,47 @@ func ExecutePipeline(jobs ...job) {
 }
 
 func SingleHash(in, out chan interface{}) {
+	wg := &sync.WaitGroup{}
 	for n := range in {
 		data := n.(int)
 		dataStr := strconv.Itoa(data)
-		crc32hash := DataSignerCrc32(dataStr)
+		md5dataStr := DataSignerMd5(dataStr)
 
-		md5hash := DataSignerCrc32(DataSignerMd5(dataStr))
-		res := fmt.Sprintf("%s~%s", crc32hash, md5hash)
-		out <- res
+		wg.Add(1)
+		go func(dataStr, md5dataStr string) {
+			defer wg.Done()
+			dataStr = DataSignerCrc32(dataStr)
+			md5hash := DataSignerCrc32(md5dataStr)
+			res := fmt.Sprintf("%s~%s", dataStr, md5hash)
+			out <- res
+		}(dataStr, md5dataStr)
 	}
+	wg.Wait()
 }
 
 func MultiHash(in, out chan interface{}) {
+	var wg sync.WaitGroup
+
 	for n := range in {
-		result := ""
+		data := n.(string)
+		result := make([]string, 6)
+
 		for th := 0; th < 6; th++ {
-			i := strconv.Itoa(th)
-			crc32val := DataSignerCrc32(fmt.Sprintf("%s%s", i, n.(string)))
-			result += crc32val
-			fmt.Println(crc32val)
+			wg.Add(1)
+			go func(index int) {
+				defer wg.Done()
+				crc32val := DataSignerCrc32(fmt.Sprintf("%d%s", index, data))
+				result[index] = crc32val
+			}(th)
 		}
-		fmt.Println(result)
-		out <- result
+
+		wg.Wait()
+
+		finalResult := ""
+		for _, res := range result {
+			finalResult += res
+		}
+		out <- finalResult
 	}
 }
 
